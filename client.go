@@ -10,31 +10,38 @@ import (
 	"time"
 )
 
-const (
-	HeaderAPIKey = "api-key"
-)
-
 // Client internal client interface
 type Client interface {
-	NewRequest(method, path string, body interface{}) (*http.Request, error)
+	NewRequest(options *Options) (*http.Request, error)
 	Do(*http.Request, interface{}) (*http.Response, error)
 }
 
 // APIClient is implementation of Client
 type APIClient struct {
 	BaseURL    *url.URL
-	APIKey     string
 	httpClient *http.Client
 }
 
+type Header struct {
+	Key   string
+	Value string
+}
+
+type Options struct {
+	Method  string
+	Path    string
+	Headers []*Header
+	Body    interface{}
+}
+
 // NewRequest returns http.Request
-func (c *APIClient) NewRequest(method, path string, body interface{}) (*http.Request, error) {
-	rel := &url.URL{Path: path}
+func (c *APIClient) NewRequest(options *Options) (*http.Request, error) {
+	rel := &url.URL{Path: options.Path}
 	u := c.BaseURL.ResolveReference(rel)
 	var buf io.ReadWriter
-	if body != nil {
+	if options.Body != nil {
 		buf = new(bytes.Buffer)
-		err := json.NewEncoder(buf).Encode(body)
+		err := json.NewEncoder(buf).Encode(options.Body)
 		if err != nil {
 			return nil, err
 		}
@@ -42,15 +49,17 @@ func (c *APIClient) NewRequest(method, path string, body interface{}) (*http.Req
 
 	//fmt.Println(buf)
 
-	req, err := http.NewRequest(method, u.String(), buf)
+	req, err := http.NewRequest(options.Method, u.String(), buf)
 	if err != nil {
 		return nil, err
 	}
-	if body != nil {
+	if options.Body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set(HeaderAPIKey, c.APIKey)
+	for _, header := range options.Headers {
+		req.Header.Set(header.Key, header.Value)
+	}
 	return req, nil
 }
 
@@ -70,8 +79,8 @@ func (c *APIClient) SetTimeout(timeout time.Duration) {
 	c.httpClient.Timeout = time.Duration(timeout * time.Second)
 }
 
-// NewAPIClient returns new client instance
-func NewAPIClient(httpClient *http.Client, baseURL string, apiKey string) (*APIClient, error) {
+// NewIamClient returns new client instance
+func NewAPIClient(httpClient *http.Client, baseURL string) (*APIClient, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -84,7 +93,6 @@ func NewAPIClient(httpClient *http.Client, baseURL string, apiKey string) (*APIC
 	c := &APIClient{
 		httpClient: httpClient,
 		BaseURL:    bu,
-		APIKey:     apiKey,
 	}
 	return c, nil
 }
